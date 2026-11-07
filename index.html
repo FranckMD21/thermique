@@ -77,7 +77,7 @@ details li{margin-bottom:4px}
 <div class="wrap">
   <header>
     <h1>Atelier Thermique</h1>
-    <p>Corrige la photo puis l'imprime directement sur la X6h en Bluetooth. À ouvrir dans Bluefy, appli officielle fermée.</p>
+    <p>Corrige la photo pour la X6h. Enregistre-la pour l'appli officielle, ou imprime-la directement en Bluetooth depuis Bluefy.</p>
   </header>
 
   <div class="row">
@@ -98,6 +98,13 @@ details li{margin-bottom:4px}
   <div class="row">
     <button class="btn" id="connect" type="button"><span class="dot" id="dot"></span><span id="clabel">Connecter l'imprimante</span></button>
     <button class="btn primary" id="print" type="button" disabled>Imprimer</button>
+  </div>
+  <div class="row">
+    <button class="btn" id="save" type="button">Enregistrer le PNG (pour l'appli)</button>
+  </div>
+  <div id="fallback" hidden>
+    <p class="note"><b>Appui long sur l'image</b> puis « Enregistrer dans Photos ».</p>
+    <img id="fbimg" alt="Image prête à imprimer" style="width:100%;border:1px solid var(--line);background:#fff">
   </div>
   <div class="status" id="status" role="status"></div>
 
@@ -147,6 +154,7 @@ details li{margin-bottom:4px}
       <div class="ctl">
         <label for="dither">Tramage</label>
         <select id="dither" style="grid-column:1/-1">
+          <option value="none">Aucun · gris lisse, pour l'appli officielle</option>
           <option value="stucki">Stucki · noir et blanc, grain fin</option>
           <option value="gray">Gris 16 niveaux · expérimental, ne sort pas encore</option>
           <option value="fs">Floyd–Steinberg · plus de détail, grain visible</option>
@@ -176,10 +184,10 @@ details li{margin-bottom:4px}
 const $=id=>document.getElementById(id);
 const DEF={width:384,rotate:true,gain:1.3,local:0.4,sharp:0.25,smooth:0.6,white:0.93,black:0.03,dither:"stucki",density:4};
 let P={...DEF};
-try{Object.assign(P,JSON.parse(localStorage.getItem("thermique-bt7")||"{}"))}catch(e){}
-let src=null, srcLabel="mire", gray=null, gw=0, gh=0, out=null, tab="out";
+try{Object.assign(P,JSON.parse(localStorage.getItem("thermique-bt8")||"{}"))}catch(e){}
+let lastTone=null,src=null, srcLabel="mire", gray=null, gw=0, gh=0, out=null, tab="out";
 
-function store(){try{localStorage.setItem("thermique-bt7",JSON.stringify(P))}catch(e){}}
+function store(){try{localStorage.setItem("thermique-bt8",JSON.stringify(P))}catch(e){}}
 function syncUI(){
   P.width=384;$("rotate").checked=P.rotate;$("dither").value=P.dither;
   for(const k of ["gain","local","sharp","smooth","white","black"]){$(k).value=P[k];}
@@ -270,9 +278,8 @@ function tone(g,P){
 
 function dither(v){
   const w=gw,h=gh,o=new Uint8ClampedArray(w*h);
-  if(P.dither==="none"){P.dither="stucki";}
-  if(P.dither==="gray"){for(let i=0;i<o.length;i++)o[i]=Math.round(Math.round(v[i]*15)*17);return o;}
-  if(false){for(let i=0;i<o.length;i++)o[i]=Math.round(v[i]*255);return o;}
+    if(P.dither==="gray"){for(let i=0;i<o.length;i++)o[i]=Math.round(Math.round(v[i]*15)*17);return o;}
+  if(P.dither==="none"){for(let i=0;i<o.length;i++)o[i]=Math.round(v[i]*255);return o;}
   if(P.dither==="bayer"){const M=[0,32,8,40,2,34,10,42,48,16,56,24,50,18,58,26,12,44,4,36,14,46,6,38,60,28,52,20,62,30,54,22,3,35,11,43,1,33,9,41,51,19,59,27,49,17,57,25,15,47,7,39,13,45,5,37,63,31,55,23,61,29,53,21];
     for(let y=0;y<h;y++)for(let x=0;x<w;x++){const i=y*w+x;o[i]=v[i]>(M[(y&7)*8+(x&7)]+.5)/64?255:0;}return o;}
   const e=Float32Array.from(v);
@@ -299,7 +306,7 @@ function run(rebuild){
   if(!src)return;
   if(rebuild||!gray)gray=toGray(src);
   const Q=srcLabel==="mire"?{...P,gain:1,local:0,sharp:0,smooth:0,white:1,black:0}:P;
-  out=dither(tone(gray,Q));paint();$("print").disabled=!tx||busy;
+  lastTone=tone(gray,Q);out=dither(lastTone);paint();$("print").disabled=!tx||busy;$("fallback").hidden=true;
 }
 
 let pend=0;function schedule(rebuild){cancelAnimationFrame(pend);pend=requestAnimationFrame(()=>run(rebuild));}
@@ -316,7 +323,11 @@ $("file").addEventListener("change",e=>{
 $("mire").onclick=loadMire;
 for(const k of ["gain","local","sharp","smooth","white","black"])$(k).addEventListener("input",e=>{P[k]=+e.target.value;syncUI();store();schedule(false);});
 $("density").addEventListener("input",e=>{P.density=+e.target.value;syncUI();store();});
-$("dither").onchange=e=>{P.dither=e.target.value;store();schedule(false);};
+const PRESET={none:{gain:1.3,local:0.5,sharp:0.7,smooth:0,white:0.97,black:0.03},
+  dith:{gain:1.3,local:0.4,sharp:0.25,smooth:0.6,white:0.93,black:0.03}};
+$("dither").onchange=e=>{const was=P.dither==="none";P.dither=e.target.value;
+  if((P.dither==="none")!==was)Object.assign(P,PRESET[P.dither==="none"?"none":"dith"]);
+  syncUI();store();schedule(false);};
 $("rotate").onchange=e=>{P.rotate=e.target.checked;store();schedule(true);};
 $("reset").onclick=()=>{P={...DEF};syncUI();store();schedule(true);};
 for(const t of ["out","in"])$("t-"+t).onclick=()=>{tab=t;$("t-out").setAttribute("aria-selected",t==="out");$("t-in").setAttribute("aria-selected",t==="in");if(gray)paint();};
@@ -360,12 +371,28 @@ async function connect(){
 }
 $("connect").onclick=connect;
 
+$("save").onclick=async()=>{
+  if(!out)return;
+  const c=document.createElement("canvas");c.width=gw;c.height=gh;const x=c.getContext("2d");const id=x.createImageData(gw,gh);
+  for(let i=0,j=0;i<gw*gh;i++,j+=4){id.data[j]=id.data[j+1]=id.data[j+2]=out[i];id.data[j+3]=255;}
+  x.putImageData(id,0,0);
+  const blob=await new Promise(r=>c.toBlob(r,"image/png"));
+  const name=`${srcLabel}-x6h.png`;
+  try{
+    const file=new File([blob],name,{type:"image/png"});
+    if(navigator.canShare&&navigator.canShare({files:[file]})){await navigator.share({files:[file]});say("");return;}
+  }catch(e){if(e&&e.name==="AbortError")return;}
+  $("fbimg").src=c.toDataURL("image/png");$("fallback").hidden=false;
+};
+
 $("print").onclick=async()=>{
   if(!out||busy)return;
   if(!tx||!dev?.gatt?.connected){await connect();if(!tx)return;}
   busy=true;$("print").disabled=true;
   try{
     const e=ENERGY[P.density-1];
+    let outP=out;
+    if(P.dither==="none"){const keep=P.dither;P.dither="stucki";outP=dither(lastTone);P.dither=keep;}
     if(P.dither==="gray"){
       // Mode gris X6h : BE 01 01 (« Gray16 »), lignes 4 bits via 0xCF (LZO, ici en littéraux purs)
       await send(pkt(0xa4,[0x35]));
@@ -397,7 +424,7 @@ $("print").onclick=async()=>{
     await send(pkt(0xbd,[0x20])); // sans cette commande, la X6h ignore l'énergie
     for(let y=0;y<gh;y++){
       const r=new Uint8Array(48);
-      for(let x=0;x<Math.min(gw,384);x++)if(out[y*gw+x]<128)r[x>>3]|=1<<(x&7);
+      for(let x=0;x<Math.min(gw,384);x++)if(outP[y*gw+x]<128)r[x>>3]|=1<<(x&7);
       await send(pkt(0xa2,r));
       if(y%16===0)say(`Impression… ${Math.round(y/gh*100)} %`);
     }
