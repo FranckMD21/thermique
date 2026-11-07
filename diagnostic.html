@@ -28,6 +28,7 @@ pre{background:var(--card);border:1px solid var(--line);border-radius:12px;paddi
     <button class="primary" id="connect">1 · Connecter</button>
     <button id="info" disabled>2 · Interroger</button>
     <button id="print" disabled>3 · Impression test</button>
+    <button class="primary" id="heat" disabled>4 · Test de chauffe</button>
     <button id="copy">Copier le journal</button>
     <button id="all">Imprimante absente de la liste ?</button>
   </div>
@@ -70,7 +71,7 @@ $("connect").onclick=async()=>{
     log(tx?"Écriture via "+tx.uuid.slice(4,8):"Aucune caractéristique d'écriture trouvée.",tx?"ok":"err");
     if(bulk)log("Caractéristique AE03 présente : protocole récent (type MXW01), qui gère souvent le gris 4 bits.","ok");
     if(rx){await rx.startNotifications();rx.addEventListener("characteristicvaluechanged",e=>log("← "+hex(new Uint8Array(e.target.value.buffer))));log("Écoute des réponses activée.");}
-    $("info").disabled=!tx;$("print").disabled=!tx;
+    $("info").disabled=!tx;$("print").disabled=!tx;$("heat").disabled=!tx;
   }catch(e){log("Erreur : "+e.message,"err");}
 };
 
@@ -111,6 +112,41 @@ $("print").onclick=async()=>{
     await send(pkt(0xa1,[0x30,0x00]));
     await send(pkt(0xa6,[0xaa,0x55,0x17,0,0,0,0,0,0,0,0x17]));
     log("Envoi terminé. Regarde l'imprimante : flèche à GAUCHE pointant vers la gauche + 6 barres du plus foncé au plus clair.","ok");
+  }catch(e){log("Erreur : "+e.message,"err");}
+};
+
+// Heat test: 6 strips, each = N marker squares on the left + solid black bar
+$("heat").onclick=async()=>{
+  const tests=[
+    ["référence (A4 33, AF 12000, BE 01)",[[0xa4,[0x33]],[0xaf,[0xe0,0x2e]],[0xbe,[0x01]]]],
+    ["qualité max (A4 35)",[[0xa4,[0x35]],[0xaf,[0xe0,0x2e]],[0xbe,[0x01]]]],
+    ["énergie max + BE 00",[[0xa4,[0x33]],[0xaf,[0xff,0xff]],[0xbe,[0x00]]]],
+    ["énergie max + lent (BD 50)",[[0xa4,[0x35]],[0xaf,[0xff,0xff]],[0xbe,[0x01]],[0xbd,[0x50]]]],
+    ["énergie max + rapide (BD 08)",[[0xa4,[0x35]],[0xaf,[0xff,0xff]],[0xbe,[0x01]],[0xbd,[0x08]]]],
+    ["tout max, énergie avant lattice",[[0xaf,[0xff,0xff]],[0xbe,[0x01]],[0xa4,[0x35]],[0xbd,[0x20]]]],
+  ];
+  try{
+    for(let t=0;t<tests.length;t++){
+      const [label,cmds]=tests[t];log("→ bande "+(t+1)+" : "+label);
+      const pre=t===5;
+      if(pre)for(const [c,d] of cmds)await send(pkt(c,d));
+      await send(pkt(0xa6,[0xaa,0x55,0x17,0x38,0x44,0x5f,0x5f,0x5f,0x44,0x38,0x2c]));
+      if(!pre)for(const [c,d] of cmds)await send(pkt(c,d));
+      for(let y=0;y<28;y++){
+        const r=new Uint8Array(48);
+        for(let x=0;x<384;x++){
+          const inMark=x<16*(t+1)&&(x%16)<10&&y>=9&&y<19;
+          const inBar=x>=120;
+          if(inMark||inBar)r[x>>3]|=1<<(x&7);
+        }
+        await send(pkt(0xa2,r));
+      }
+      await send(pkt(0xa6,[0xaa,0x55,0x17,0,0,0,0,0,0,0,0x17]));
+      await send(pkt(0xa1,[0x14,0x00]));
+      await sleep(300);
+    }
+    await send(pkt(0xa1,[0x40,0x00]));
+    log("Fini. Compte les petits carrés à gauche de la bande la plus noire.","ok");
   }catch(e){log("Erreur : "+e.message,"err");}
 };
 
