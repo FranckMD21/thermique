@@ -369,9 +369,10 @@ $("print").onclick=async()=>{
     if(P.dither==="gray"){
       // Mode gris X6h : BE 01 01 (« Gray16 »), lignes 4 bits via 0xCF (LZO, ici en littéraux purs)
       await send(pkt(0xa4,[0x35]));
+      await send(pkt(0xa6,[0xaa,0x55,0x17,0x38,0x44,0x5f,0x5f,0x5f,0x44,0x38,0x2c])); // démarre l'impression au fil de l'eau
       await send(pkt(0xaf,[e&255,e>>8]));
-      await send(pkt(0xbd,[0x20]));
       await send(pkt(0xbe,[0x01,0x01]));
+      await send(pkt(0xbd,[0x20]));
       const line=new Uint8Array(192);
       const lzo=raw=>Uint8Array.from([17+raw.length,...raw,0x11,0x00,0x00]);
       const sendGray=async raw=>{const c=lzo(raw);await send(pkt(0xcf,[raw.length&255,raw.length>>8,c.length&255,c.length>>8,...c]));};
@@ -383,8 +384,10 @@ $("print").onclick=async()=>{
           line[x>>1]|=(x&1)?lvl<<4:lvl;
         }
         await sendGray(line);
+        await sleep(20); // le mode gris imprime plus lentement : on laisse respirer la mémoire
         if(y%16===0)say(`Impression… ${Math.round(y/gh*100)} %`);
       }
+      await send(pkt(0xa6,[0xaa,0x55,0x17,0,0,0,0,0,0,0,0x17]));
       await send(pkt(0xa1,[0x50,0x00]));
     } else {
     await send(pkt(0xa4,[0x35]));
