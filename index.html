@@ -329,8 +329,14 @@ const CRC=(()=>{const t=new Uint8Array(256);for(let i=0;i<256;i++){let c=i;for(l
 const crc8=d=>{let c=0;for(const b of d)c=CRC[(c^b)&255];return c};
 const pkt=(cmd,data)=>{data=Uint8Array.from(data);return Uint8Array.from([0x51,0x78,cmd,0,data.length&255,data.length>>8,...data,crc8(data),0xff])};
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
-async function send(p){while(paused)await sleep(20);
-  if(tx.properties.writeWithoutResponse)await tx.writeValueWithoutResponse(p);else await tx.writeValue(p);await sleep(12);}
+const CHUNK=100; // un envoi BLE iOS ne dépasse pas ~180 octets : on découpe
+async function send(p){
+  for(let o=0;o<p.length;o+=CHUNK){
+    while(paused)await sleep(20);
+    const part=p.subarray(o,o+CHUNK);
+    if(tx.properties.writeWithoutResponse)await tx.writeValueWithoutResponse(part);else await tx.writeValue(part);
+    await sleep(p.length>CHUNK?8:12);
+  }}
 function setConn(on,name){$("dot").classList.toggle("on",on);$("clabel").textContent=on?(name||"Imprimante")+" connectée":"Connecter l'imprimante";$("print").disabled=!on||busy||!out;}
 function say(t,err){const s=$("status");s.textContent=t;s.className="status"+(err?" err":"");}
 const short=u=>{u=u.toLowerCase();return u.length<=8?u.slice(-4):u.slice(4,8)};
