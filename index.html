@@ -173,12 +173,12 @@ details li{margin-bottom:4px}
 <script>
 (()=>{
 const $=id=>document.getElementById(id);
-const DEF={width:384,rotate:true,gain:1.3,local:0.4,sharp:0.25,smooth:0.6,white:0.93,black:0.03,dither:"stucki",density:7};
+const DEF={width:384,rotate:true,gain:1.3,local:0.4,sharp:0.25,smooth:0.6,white:0.93,black:0.03,dither:"stucki",density:4};
 let P={...DEF};
-try{Object.assign(P,JSON.parse(localStorage.getItem("thermique-bt4")||"{}"))}catch(e){}
+try{Object.assign(P,JSON.parse(localStorage.getItem("thermique-bt5")||"{}"))}catch(e){}
 let src=null, srcLabel="mire", gray=null, gw=0, gh=0, out=null, tab="out";
 
-function store(){try{localStorage.setItem("thermique-bt4",JSON.stringify(P))}catch(e){}}
+function store(){try{localStorage.setItem("thermique-bt5",JSON.stringify(P))}catch(e){}}
 function syncUI(){
   P.width=384;$("rotate").checked=P.rotate;$("dither").value=P.dither;
   for(const k of ["gain","local","sharp","smooth","white","black"]){$(k).value=P[k];}
@@ -358,10 +358,11 @@ $("print").onclick=async()=>{
   busy=true;$("print").disabled=true;
   try{
     const e=ENERGY[P.density-1];
-    await send(pkt(0xa4,[0x33]));
+    await send(pkt(0xa4,[0x35]));
     await send(pkt(0xa6,[0xaa,0x55,0x17,0x38,0x44,0x5f,0x5f,0x5f,0x44,0x38,0x2c]));
     await send(pkt(0xaf,[e&255,e>>8]));
     await send(pkt(0xbe,[0x01]));
+    await send(pkt(0xbd,[0x20])); // sans cette commande, la X6h ignore l'énergie
     const bpl=gw>>3;
     for(let y=0;y<gh;y++){
       const r=new Uint8Array(48);
