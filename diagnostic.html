@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Diagnostic X6h</title>
+<style>
+:root{--bg:#f4f6f6;--card:#fff;--ink:#17191b;--muted:#5f676c;--line:#dde2e3;--accent:#0b6e78;--ok:#1f7a3a;--err:#a1530a}
+@media (prefers-color-scheme:dark){:root{--bg:#111416;--card:#1a1e21;--ink:#e9eeef;--muted:#9aa4a8;--line:#2b3236;--accent:#4fb9c4;--ok:#6fcf8a;--err:#e3a35b;color-scheme:dark}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,sans-serif}
+.wrap{max-width:560px;margin:0 auto;padding:20px max(16px,env(safe-area-inset-right)) 40px max(16px,env(safe-area-inset-left));display:flex;flex-direction:column;gap:14px}
+h1{margin:0;font-size:1.4rem}
+p{margin:0;color:var(--muted)}
+.btns{display:flex;flex-wrap:wrap;gap:8px}
+button{flex:1 1 150px;font:600 15px system-ui,sans-serif;padding:12px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--ink)}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+button:disabled{opacity:.45}
+pre{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;font:12px/1.5 ui-monospace,Menlo,monospace;white-space:pre-wrap;word-break:break-all;margin:0;min-height:200px;max-height:55vh;overflow:auto}
+.ok{color:var(--ok)}.err{color:var(--err)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Diagnostic X6h</h1>
+  <p>À ouvrir dans Bluefy. Allume l'imprimante et ferme l'appli officielle (elle garde sinon la connexion Bluetooth).</p>
+  <div class="btns">
+    <button class="primary" id="connect">1 · Connecter</button>
+    <button id="info" disabled>2 · Interroger</button>
+    <button id="print" disabled>3 · Impression test</button>
+    <button id="copy">Copier le journal</button>
+    <button id="all">Imprimante absente de la liste ?</button>
+  </div>
+  <pre id="log"></pre>
+</div>
+<script>
+const $=id=>document.getElementById(id);
+const logEl=$("log");
+function log(t,c){const s=document.createElement("span");if(c)s.className=c;s.textContent=t+"\n";logEl.appendChild(s);logEl.scrollTop=logEl.scrollHeight;}
+const hex=a=>Array.from(a,b=>b.toString(16).padStart(2,"0")).join(" ");
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const U=n=>`0000${n.toString(16).padStart(4,"0")}-0000-1000-8000-00805f9b34fb`;
+const SERVICES=[0xae30,0xaf30,0xff00,0xff10,0x18f0,0xfee7,0xffe0,0xffb0,0x49535343].map(n=>n>0xffff?"49535343-fe7d-4ae5-8fa9-9fafd205e455":U(n));
+
+let dev,server,tx,rx,bulk;
+
+// CRC8 (poly 0x07) used by the "cat printer" family
+const CRC=(()=>{const t=new Uint8Array(256);for(let i=0;i<256;i++){let c=i;for(let j=0;j<8;j++)c=c&0x80?((c<<1)^0x07)&0xff:(c<<1)&0xff;t[i]=c;}return t})();
+const crc8=d=>{let c=0;for(const b of d)c=CRC[(c^b)&0xff];return c};
+function pkt(cmd,data){data=Uint8Array.from(data);return Uint8Array.from([0x51,0x78,cmd,0x00,data.length&0xff,data.length>>8,...data,crc8(data),0xff]);}
+async function send(p){ if(tx.properties.writeWithoutResponse) await tx.writeValueWithoutResponse(p); else await tx.writeValue(p); await sleep(15);}
+
+$("connect").onclick=async()=>{
+  if(!navigator.bluetooth){log("Web Bluetooth absent : ouvre cette page dans Bluefy.","err");return;}
+  try{
+    dev=await navigator.bluetooth.requestDevice(window.__all?{acceptAllDevices:true,optionalServices:SERVICES}:{filters:[{namePrefix:"X6"},{services:[U(0xae30)]},{services:[U(0xaf30)]}],optionalServices:SERVICES});
+    log("Appareil : "+(dev.name||"(sans nom)")+"  id "+dev.id,"ok");
+    server=await dev.gatt.connect();log("Connecté.","ok");
+    const svcs=await server.getPrimaryServices();
+    for(const s of svcs){
+      log("Service "+s.uuid);
+      for(const c of await s.getCharacteristics()){
+        const p=Object.entries(c.properties).filter(([k,v])=>v===true).map(([k])=>k).join(",");
+        log("   ↳ "+c.uuid.slice(4,8)+"  ["+p+"]");
+        const short=c.uuid.slice(4,8);
+        if(short==="ae01")tx=c; if(short==="ae02")rx=c; if(short==="ae03")bulk=c;
+      }
+    }
+    if(!tx){for(const s of svcs)for(const c of await s.getCharacteristics()){if(!tx&&(c.properties.writeWithoutResponse||c.properties.write))tx=c;if(!rx&&c.properties.notify)rx=c;}}
+    log(tx?"Écriture via "+tx.uuid.slice(4,8):"Aucune caractéristique d'écriture trouvée.",tx?"ok":"err");
+    if(bulk)log("Caractéristique AE03 présente : protocole récent (type MXW01), qui gère souvent le gris 4 bits.","ok");
+    if(rx){await rx.startNotifications();rx.addEventListener("characteristicvaluechanged",e=>log("← "+hex(new Uint8Array(e.target.value.buffer))));log("Écoute des réponses activée.");}
+    $("info").disabled=!tx;$("print").disabled=!tx;
+  }catch(e){log("Erreur : "+e.message,"err");}
+};
+
+$("info").onclick=async()=>{
+  try{
+    log("→ état (A3)");await send(pkt(0xa3,[0]));await sleep(400);
+    log("→ infos (A8)");await send(pkt(0xa8,[0]));await sleep(400);
+    log("→ batterie/variante (AB)");await send(pkt(0xab,[0]));await sleep(400);
+    log("Fin des requêtes. Une ligne « ← » par réponse reçue.");
+  }catch(e){log("Erreur : "+e.message,"err");}
+};
+
+// 1-bit test: left-anchored arrow + stepped bars, 384 dots wide, LSB-first bytes
+$("print").onclick=async()=>{
+  try{
+    const W=384,H=96,rows=[];
+    for(let y=0;y<H;y++){
+      const r=new Uint8Array(W/8);
+      for(let x=0;x<W;x++){
+        let on=false;
+        if(y<40){ // arrow pointing left, at the left edge
+          const cy=20,d=Math.abs(y-cy);on=(x<60&&x>=d*1.4)||(x>=40&&x<120&&d<6);
+        } else if(y>=50){ // 6 bars of decreasing density
+          const band=Math.floor(x/64),dens=[1,.8,.6,.4,.2,.05][band];
+          on=((x*7+y*13)%100)/100<dens;
+        }
+        if(on)r[x>>3]|=1<<(x&7);
+      }
+      rows.push(r);
+    }
+    log("→ réglages (A4 qualité, AF énergie, BE mode image)");
+    await send(pkt(0xa4,[0x33]));
+    await send(pkt(0xaf,[0xe0,0x2e]));
+    await send(pkt(0xbe,[0x00]));
+    await send(pkt(0xa6,[0xaa,0x55,0x17,0x38,0x44,0x5f,0x5f,0x5f,0x44,0x38,0x2c]));
+    log("→ "+H+" lignes (A2)");
+    for(const r of rows)await send(pkt(0xa2,r));
+    await send(pkt(0xa1,[0x30,0x00]));
+    await send(pkt(0xa6,[0xaa,0x55,0x17,0,0,0,0,0,0,0,0x17]));
+    log("Envoi terminé. Regarde l'imprimante : flèche à GAUCHE pointant vers la gauche + 6 barres du plus foncé au plus clair.","ok");
+  }catch(e){log("Erreur : "+e.message,"err");}
+};
+
+$("copy").onclick=async()=>{
+  try{await navigator.clipboard.writeText(logEl.textContent);log("Journal copié.","ok");}
+  catch(e){const r=document.createRange();r.selectNodeContents(logEl);getSelection().removeAllRanges();getSelection().addRange(r);log("Sélectionne et copie le texte manuellement.");}
+};
+$("all").onclick=()=>{window.__all=true;log("Liste complète activée : touche « Connecter » à nouveau.");};
+log("Prêt. Touche « Connecter » puis choisis l'imprimante (souvent nommée X6h ou similaire).");
+</script>
+</body>
+</html>

@@ -3,123 +3,373 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Diagnostic X6h</title>
+<title>Atelier Thermique</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
 <style>
-:root{--bg:#f4f6f6;--card:#fff;--ink:#17191b;--muted:#5f676c;--line:#dde2e3;--accent:#0b6e78;--ok:#1f7a3a;--err:#a1530a}
-@media (prefers-color-scheme:dark){:root{--bg:#111416;--card:#1a1e21;--ink:#e9eeef;--muted:#9aa4a8;--line:#2b3236;--accent:#4fb9c4;--ok:#6fcf8a;--err:#e3a35b;color-scheme:dark}}
+/* Layout: one column like a till receipt — preview on top, controls below, save at the bottom */
+:root{
+  --paper:#f4f6f6; --card:#ffffff; --ink:#17191b; --muted:#5f676c; --line:#dde2e3;
+  --accent:#0b6e78; --accent-ink:#ffffff; --warn:#a1530a;
+  --f-ui:"Instrument Sans",system-ui,-apple-system,sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --paper:#111416; --card:#1a1e21; --ink:#e9eeef; --muted:#9aa4a8; --line:#2b3236;
+  --accent:#4fb9c4; --accent-ink:#06282c; --warn:#e3a35b; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --paper:#111416; --card:#1a1e21; --ink:#e9eeef; --muted:#9aa4a8; --line:#2b3236;
+  --accent:#4fb9c4; --accent-ink:#06282c; --warn:#e3a35b; color-scheme:dark}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,sans-serif}
-.wrap{max-width:560px;margin:0 auto;padding:20px max(16px,env(safe-area-inset-right)) 40px max(16px,env(safe-area-inset-left));display:flex;flex-direction:column;gap:14px}
-h1{margin:0;font-size:1.4rem}
-p{margin:0;color:var(--muted)}
-.btns{display:flex;flex-wrap:wrap;gap:8px}
-button{flex:1 1 150px;font:600 15px system-ui,sans-serif;padding:12px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--ink)}
-button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+body{margin:0}
+[hidden]{display:none!important}
 button:disabled{opacity:.45}
-pre{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;font:12px/1.5 ui-monospace,Menlo,monospace;white-space:pre-wrap;word-break:break-all;margin:0;min-height:200px;max-height:55vh;overflow:auto}
-.ok{color:var(--ok)}.err{color:var(--err)}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--muted);margin-right:6px}
+.dot.on{background:#2e9e57}
+body{background:var(--paper);color:var(--ink);font-family:var(--f-ui);font-size:15px;line-height:1.45}
+.wrap{max-width:560px;margin:0 auto;padding-block:20px 40px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  display:flex;flex-direction:column;gap:18px}
+header h1{font-size:1.55rem;margin:0;letter-spacing:-.01em;text-wrap:balance}
+header p{margin:4px 0 0;color:var(--muted);max-width:60ch}
+.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.btn{appearance:none;border:1px solid var(--line);background:var(--card);color:var(--ink);
+  font:600 15px var(--f-ui);padding:11px 14px;border-radius:10px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.row{display:flex;gap:10px;flex-wrap:wrap}
+.row>*{flex:1 1 140px}
+input[type=file]{display:none}
+
+.preview{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:10px}
+.tabs{display:flex;gap:4px;background:var(--paper);border-radius:9px;padding:3px}
+.tabs button{flex:1;border:0;background:transparent;color:var(--muted);font:600 13px var(--f-ui);padding:7px;border-radius:7px;cursor:pointer}
+.tabs button[aria-selected=true]{background:var(--card);color:var(--ink);box-shadow:0 1px 2px rgb(0 0 0 / .12)}
+.strip{background:#fff;padding:10px;border-radius:4px;display:flex;justify-content:center}
+.strip canvas{width:100%;height:auto;image-rendering:pixelated;display:block}
+.meta{display:flex;justify-content:space-between;color:var(--muted);font-size:12px;gap:8px;flex-wrap:wrap}
+
+fieldset{border:0;margin:0;padding:0;display:flex;flex-direction:column;gap:14px}
+legend{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600;margin-bottom:10px}
+.ctl{display:grid;grid-template-columns:1fr auto;gap:2px 10px;align-items:baseline}
+.ctl label{font-weight:500}
+.ctl output{font-family:var(--f-mono);font-size:13px;color:var(--muted)}
+.ctl small{grid-column:1/-1;color:var(--muted);font-size:12.5px}
+.ctl input[type=range]{grid-column:1/-1;width:100%;accent-color:var(--accent)}
+select{font:500 15px var(--f-ui);padding:9px 10px;border-radius:9px;border:1px solid var(--line);background:var(--card);color:var(--ink);width:100%}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:16px}
+.check{display:flex;gap:8px;align-items:center;font-weight:500}
+.check input{accent-color:var(--accent);width:18px;height:18px}
+.note{font-size:13px;color:var(--muted);margin:0}
+.note b{color:var(--ink)}
+.status{font-size:13px;min-height:1.2em;color:var(--muted)}
+.status.err{color:var(--warn)}
+#fallback img{width:100%;image-rendering:pixelated;border:1px solid var(--line);background:#fff}
+details summary{cursor:pointer;font-weight:600}
+details ol{padding-left:20px;margin:8px 0 0;color:var(--muted);font-size:13.5px}
+details li{margin-bottom:4px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>
 <body>
+
+
 <div class="wrap">
-  <h1>Diagnostic X6h</h1>
-  <p>À ouvrir dans Bluefy. Allume l'imprimante et ferme l'appli officielle (elle garde sinon la connexion Bluetooth).</p>
-  <div class="btns">
-    <button class="primary" id="connect">1 · Connecter</button>
-    <button id="info" disabled>2 · Interroger</button>
-    <button id="print" disabled>3 · Impression test</button>
-    <button id="copy">Copier le journal</button>
-    <button id="all">Imprimante absente de la liste ?</button>
+  <header>
+    <h1>Atelier Thermique</h1>
+    <p>Corrige la photo puis l'imprime directement sur la X6h en Bluetooth. À ouvrir dans Bluefy, appli officielle fermée.</p>
+  </header>
+
+  <div class="row">
+    <label class="btn primary" for="file">Choisir une photo</label>
+    <button class="btn" id="mire" type="button">Mire de calibration</button>
+    <input type="file" id="file" accept="image/*">
   </div>
-  <pre id="log"></pre>
+
+  <section class="preview" aria-label="Aperçu">
+    <div class="tabs" role="tablist">
+      <button role="tab" id="t-out" aria-selected="true">Prêt à imprimer</button>
+      <button role="tab" id="t-in" aria-selected="false">Gris d'origine</button>
+    </div>
+    <div class="strip"><canvas id="view" width="384" height="400"></canvas></div>
+    <div class="meta"><span id="srcname">Mire brute (sans correction, pour tester l'imprimante)</span><span class="mono" id="dims"></span></div>
+  </section>
+
+  <div class="row">
+    <button class="btn" id="connect" type="button"><span class="dot" id="dot"></span><span id="clabel">Connecter l'imprimante</span></button>
+    <button class="btn primary" id="print" type="button" disabled>Imprimer</button>
+  </div>
+  <div class="status" id="status" role="status"></div>
+
+  <section class="panel">
+    <fieldset>
+      <legend>Imprimante · X6h, 384 points</legend>
+      <div class="ctl">
+        <label for="density">Densité de chauffe</label><output id="o-density"></output>
+        <input type="range" id="density" min="1" max="7" step="1">
+        <small>Remplace la « profondeur » de l'appli. Plus haut = noirs plus denses, mais points qui bavent.</small>
+      </div>
+      <label class="check"><input type="checkbox" id="rotate"> Pivoter les photos paysage (plus grande sur le papier)</label>
+    </fieldset>
+  </section>
+
+  <section class="panel">
+    <fieldset>
+      <legend>Rendu</legend>
+      <div class="ctl">
+        <label for="gain">Compensation de chauffe</label><output id="o-gain"></output>
+        <input type="range" id="gain" min="1" max="2.4" step="0.05">
+        <small>Les points thermiques bavent et noircissent les gris moyens. Augmente si l'impression sort trop sombre.</small>
+      </div>
+      <div class="ctl">
+        <label for="local">Contraste local</label><output id="o-local"></output>
+        <input type="range" id="local" min="0" max="1.5" step="0.05">
+        <small>Détache les visages du fond sans brûler les zones claires.</small>
+      </div>
+      <div class="ctl">
+        <label for="sharp">Netteté</label><output id="o-sharp"></output>
+        <input type="range" id="sharp" min="0" max="2" step="0.05">
+      </div>
+      <div class="ctl">
+        <label for="white">Seuil blanc papier</label><output id="o-white"></output>
+        <input type="range" id="white" min="0.75" max="1" step="0.01">
+        <small>Les gris plus clairs que ce seuil restent blancs : fini le voile gris sur les murs.</small>
+      </div>
+      <div class="ctl">
+        <label for="black">Seuil noir</label><output id="o-black"></output>
+        <input type="range" id="black" min="0" max="0.25" step="0.01">
+      </div>
+      <div class="ctl">
+        <label for="dither">Tramage</label>
+        <select id="dither" style="grid-column:1/-1">
+          <option value="stucki">Stucki · grain fin et doux</option>
+          <option value="fs">Floyd–Steinberg · plus de détail, grain visible</option>
+          <option value="atk">Atkinson · plus clair, contrasté</option>
+          <option value="bayer">Trame ordonnée · régulière, style gravure</option>
+        </select>
+      </div>
+      <button class="btn" id="reset" type="button">Réglages par défaut</button>
+    </fieldset>
+  </section>
+
+  <section class="panel">
+    <details>
+      <summary>Régler la densité une fois pour toutes</summary>
+      <ol>
+        <li>Imprime la mire de calibration avec la profondeur actuelle.</li>
+        <li>Choisis la densité la plus basse où le carré 100&nbsp;% est bien noir et où les carrés 10&nbsp;% et 20&nbsp;% restent distincts du blanc.</li>
+        <li>Garde cette densité fixe. Ensuite, n'ajuste plus que la compensation de chauffe.</li>
+        
+      </ol>
+    </details>
+  </section>
 </div>
+
 <script>
+(()=>{
 const $=id=>document.getElementById(id);
-const logEl=$("log");
-function log(t,c){const s=document.createElement("span");if(c)s.className=c;s.textContent=t+"\n";logEl.appendChild(s);logEl.scrollTop=logEl.scrollHeight;}
-const hex=a=>Array.from(a,b=>b.toString(16).padStart(2,"0")).join(" ");
-const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const DEF={width:384,rotate:true,gain:1.3,local:0.5,sharp:0.7,white:0.97,black:0.03,dither:"stucki",density:5};
+let P={...DEF};
+try{Object.assign(P,JSON.parse(localStorage.getItem("thermique-bt1")||"{}"))}catch(e){}
+let src=null, srcLabel="mire", gray=null, gw=0, gh=0, out=null, tab="out";
+
+function store(){try{localStorage.setItem("thermique-bt1",JSON.stringify(P))}catch(e){}}
+function syncUI(){
+  P.width=384;$("rotate").checked=P.rotate;$("dither").value=P.dither;
+  for(const k of ["gain","local","sharp","white","black"]){$(k).value=P[k];}
+  $("o-gain").textContent="×"+(+P.gain).toFixed(2);
+  $("o-local").textContent=Math.round(P.local*100)+" %";
+  $("o-sharp").textContent=Math.round(P.sharp*100)+" %";
+  $("o-white").textContent=Math.round(P.white*100)+" %";
+  $("o-black").textContent=Math.round(P.black*100)+" %";
+  $("density").value=P.density;$("o-density").textContent=P.density+" / 7";
+}
+
+/* Calibration chart drawn on a canvas */
+function makeMire(){
+  const c=document.createElement("canvas");c.width=768;c.height=900;const x=c.getContext("2d");
+  x.fillStyle="#fff";x.fillRect(0,0,768,900);
+  x.fillStyle="#000";x.font="600 40px sans-serif";x.fillText("MIRE THERMIQUE",30,60);
+  for(let i=0;i<=10;i++){const v=255-Math.round(i*25.5);const col=i%6,row=Math.floor(i/6);
+    const X=30+col*120,Y=100+row*150;x.fillStyle=`rgb(${v},${v},${v})`;x.fillRect(X,Y,108,108);
+    x.strokeStyle="#000";x.lineWidth=2;x.strokeRect(X,Y,108,108);x.fillStyle="#000";x.font="26px sans-serif";x.fillText(i*10+" %",X+12,Y+138);}
+  const g=x.createLinearGradient(30,0,738,0);g.addColorStop(0,"#fff");g.addColorStop(1,"#000");
+  x.fillStyle=g;x.fillRect(30,420,708,90);x.strokeRect(30,420,708,90);
+  // skin-tone-like soft sphere for midtones
+  const r=x.createRadialGradient(250,700,20,280,720,190);r.addColorStop(0,"#e8e8e8");r.addColorStop(.7,"#8a8a8a");r.addColorStop(1,"#3a3a3a");
+  x.fillStyle=r;x.beginPath();x.arc(280,720,160,0,7);x.fill();
+  x.fillStyle="#000";for(let i=0;i<12;i++){x.fillRect(500+i*20,580,1+i%4,280)}
+  x.font="22px sans-serif";x.fillText("lignes fines",500,885);
+  return c;
+}
+
+/* Resize to head width, return Float32 luminance 0..1 */
+function toGray(img){
+  let w=img.naturalWidth||img.width,h=img.naturalHeight||img.height;
+  const rot=P.rotate&&w>h*1.08;
+  const W=+P.width, sw=rot?h:w, sh=rot?w:h, H=Math.round(sh*W/sw);
+  // progressive halving for clean downscale
+  let cur=document.createElement("canvas");cur.width=sw;cur.height=sh;
+  let cx=cur.getContext("2d");
+  if(rot){cx.translate(sw,0);cx.rotate(Math.PI/2);}
+  cx.drawImage(img,0,0);
+  while(cur.width>W*2){const n=document.createElement("canvas");n.width=Math.round(cur.width/2);n.height=Math.round(cur.height/2);
+    const nx=n.getContext("2d");nx.imageSmoothingQuality="high";nx.drawImage(cur,0,0,n.width,n.height);cur=n;}
+  const f=document.createElement("canvas");f.width=W;f.height=H;const fx=f.getContext("2d",{willReadFrequently:true});
+  fx.imageSmoothingQuality="high";fx.fillStyle="#fff";fx.fillRect(0,0,W,H);fx.drawImage(cur,0,0,W,H);
+  const d=fx.getImageData(0,0,W,H).data,g=new Float32Array(W*H);
+  const lin=v=>{v/=255;return v<=.04045?v/12.92:Math.pow((v+.055)/1.055,2.4)};
+  const LUT=new Float32Array(256);for(let i=0;i<256;i++)LUT[i]=lin(i);
+  for(let i=0,j=0;i<g.length;i++,j+=4){
+    const L=.2126*LUT[d[j]]+.7152*LUT[d[j+1]]+.0722*LUT[d[j+2]];
+    g[i]=L<=.0031308?L*12.92:1.055*Math.pow(L,1/2.4)-.055; // back to perceptual
+  }
+  gw=W;gh=H;return g;
+}
+
+function boxBlur(a,w,h,r){
+  r=Math.max(1,Math.round(r));const t=new Float32Array(a.length),o=new Float32Array(a.length),n=2*r+1;
+  for(let y=0;y<h;y++){let s=0;const row=y*w;
+    for(let i=-r;i<=r;i++)s+=a[row+Math.min(w-1,Math.max(0,i))];
+    for(let x=0;x<w;x++){t[row+x]=s/n;s+=a[row+Math.min(w-1,x+r+1)]-a[row+Math.max(0,x-r)];}}
+  for(let x=0;x<w;x++){let s=0;
+    for(let i=-r;i<=r;i++)s+=t[Math.min(h-1,Math.max(0,i))*w+x];
+    for(let y=0;y<h;y++){o[y*w+x]=s/n;s+=t[Math.min(h-1,y+r+1)*w+x]-t[Math.max(0,y-r)*w+x];}}
+  return o;
+}
+const blur=(a,w,h,r)=>boxBlur(boxBlur(boxBlur(a,w,h,r),w,h,r),w,h,r);
+
+function tone(g,P){
+  const w=gw,h=gh,n=g.length;let v=Float32Array.from(g);
+  // auto levels, 0.5% clip
+  const hist=new Uint32Array(256);for(let i=0;i<n;i++)hist[Math.min(255,Math.max(0,Math.round(v[i]*255)))]++;
+  let lo=0,hi=255,acc=0,cut=n*.005;
+  for(;lo<255;lo++){acc+=hist[lo];if(acc>cut)break}acc=0;
+  for(;hi>0;hi--){acc+=hist[hi];if(acc>cut)break}
+  if(hi-lo<20){lo=0;hi=255}
+  const L=lo/255,S=255/Math.max(1,hi-lo);
+  for(let i=0;i<n;i++)v[i]=Math.min(1,Math.max(0,(v[i]-L)*S));
+  // local contrast
+  if(P.local>0){const b=blur(v,w,h,Math.max(4,w/28)/2);for(let i=0;i<n;i++)v[i]+=P.local*(v[i]-b[i]);}
+  // sharpen
+  if(P.sharp>0){const b=boxBlur(v,w,h,1);for(let i=0;i<n;i++)v[i]+=P.sharp*(v[i]-b[i]);}
+  // dot-gain compensation + paper thresholds
+  const ig=1/P.gain,wt=P.white,bk=P.black,span=Math.max(.05,wt-bk);
+  for(let i=0;i<n;i++){let x=Math.min(1,Math.max(0,v[i]));x=Math.pow(x,ig);x=(x-bk)/span;v[i]=x<0?0:x>1?1:x;}
+  return v;
+}
+
+function dither(v){
+  const w=gw,h=gh,o=new Uint8ClampedArray(w*h);
+  if(P.dither==="none"){P.dither="stucki";}
+  if(false){for(let i=0;i<o.length;i++)o[i]=Math.round(v[i]*255);return o;}
+  if(P.dither==="bayer"){const M=[0,32,8,40,2,34,10,42,48,16,56,24,50,18,58,26,12,44,4,36,14,46,6,38,60,28,52,20,62,30,54,22,3,35,11,43,1,33,9,41,51,19,59,27,49,17,57,25,15,47,7,39,13,45,5,37,63,31,55,23,61,29,53,21];
+    for(let y=0;y<h;y++)for(let x=0;x<w;x++){const i=y*w+x;o[i]=v[i]>(M[(y&7)*8+(x&7)]+.5)/64?255:0;}return o;}
+  const e=Float32Array.from(v);
+  for(let y=0;y<h;y++){const rev=P.dither!=="atk"&&(y&1);
+    for(let k=0;k<w;k++){const x=rev?w-1-k:k,i=y*w+x,old=e[i],nw=old>.5?1:0,err=old-nw;o[i]=nw*255;
+      const add=(dx,dy,f)=>{const X=x+(rev?-dx:dx),Y=y+dy;if(X>=0&&X<w&&Y<h)e[Y*w+X]+=err*f};
+      if(P.dither==="fs"){add(1,0,7/16);add(-1,1,3/16);add(0,1,5/16);add(1,1,1/16);}
+      else if(P.dither==="stucki"){const q=1/42;add(1,0,8*q);add(2,0,4*q);add(-2,1,2*q);add(-1,1,4*q);add(0,1,8*q);add(1,1,4*q);add(2,1,2*q);add(-2,2,q);add(-1,2,2*q);add(0,2,4*q);add(1,2,2*q);add(2,2,q);}
+      else{const f=1/8;add(1,0,f);add(2,0,f);add(-1,1,f);add(0,1,f);add(1,1,f);add(0,2,f);}
+    }}
+  return o;
+}
+
+function paint(){
+  const c=$("view");c.width=gw;c.height=gh;const x=c.getContext("2d");const id=x.createImageData(gw,gh);
+  const s=tab==="out"?out:null;
+  for(let i=0,j=0;i<gw*gh;i++,j+=4){const val=s?s[i]:Math.round(gray[i]*255);id.data[j]=id.data[j+1]=id.data[j+2]=val;id.data[j+3]=255;}
+  x.putImageData(id,0,0);
+  const mm=(gh/8).toFixed(0);
+  $("dims").textContent=`${gw} × ${gh} pts · ≈ ${mm} mm de papier`;
+}
+
+function run(rebuild){
+  if(!src)return;
+  if(rebuild||!gray)gray=toGray(src);
+  const Q=srcLabel==="mire"?{...P,gain:1,local:0,sharp:0,white:1,black:0}:P;
+  out=dither(tone(gray,Q));paint();$("print").disabled=!tx||busy;
+}
+
+let pend=0;function schedule(rebuild){cancelAnimationFrame(pend);pend=requestAnimationFrame(()=>run(rebuild));}
+
+function loadMire(){src=makeMire();srcLabel="mire";$("srcname").textContent="Mire brute (sans correction, pour tester l'imprimante)";schedule(true);}
+
+$("file").addEventListener("change",e=>{
+  const f=e.target.files[0];if(!f)return;
+  const url=URL.createObjectURL(f),img=new Image();
+  img.onload=()=>{src=img;srcLabel=f.name.replace(/\.[^.]+$/,"");$("srcname").textContent=f.name;$("status").textContent="";schedule(true);};
+  img.onerror=()=>{$("status").textContent="Format non lu par le navigateur. Essaie un JPEG ou un PNG (sur iPhone, le HEIC passe en général via « Choisir une photo »).";$("status").className="status err";};
+  img.src=url;e.target.value="";
+});
+$("mire").onclick=loadMire;
+for(const k of ["gain","local","sharp","white","black"])$(k).addEventListener("input",e=>{P[k]=+e.target.value;syncUI();store();schedule(false);});
+$("density").addEventListener("input",e=>{P.density=+e.target.value;syncUI();store();});
+$("dither").onchange=e=>{P.dither=e.target.value;store();schedule(false);};
+$("rotate").onchange=e=>{P.rotate=e.target.checked;store();schedule(true);};
+$("reset").onclick=()=>{P={...DEF};syncUI();store();schedule(true);};
+for(const t of ["out","in"])$("t-"+t).onclick=()=>{tab=t;$("t-out").setAttribute("aria-selected",t==="out");$("t-in").setAttribute("aria-selected",t==="in");if(gray)paint();};
+
+/* ---------- Bluetooth : protocole « cat printer » (service AE30) ---------- */
 const U=n=>`0000${n.toString(16).padStart(4,"0")}-0000-1000-8000-00805f9b34fb`;
-const SERVICES=[0xae30,0xaf30,0xff00,0xff10,0x18f0,0xfee7,0xffe0,0xffb0,0x49535343].map(n=>n>0xffff?"49535343-fe7d-4ae5-8fa9-9fafd205e455":U(n));
+const ENERGY=[5000,8000,11000,15000,20000,26000,34000];
+let dev=null,tx=null,rx=null,paused=false,busy=false;
+const CRC=(()=>{const t=new Uint8Array(256);for(let i=0;i<256;i++){let c=i;for(let j=0;j<8;j++)c=c&0x80?((c<<1)^7)&255:(c<<1)&255;t[i]=c;}return t})();
+const crc8=d=>{let c=0;for(const b of d)c=CRC[(c^b)&255];return c};
+const pkt=(cmd,data)=>{data=Uint8Array.from(data);return Uint8Array.from([0x51,0x78,cmd,0,data.length&255,data.length>>8,...data,crc8(data),0xff])};
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+async function send(p){while(paused)await sleep(20);
+  if(tx.properties.writeWithoutResponse)await tx.writeValueWithoutResponse(p);else await tx.writeValue(p);await sleep(12);}
+function setConn(on,name){$("dot").classList.toggle("on",on);$("clabel").textContent=on?(name||"Imprimante")+" connectée":"Connecter l'imprimante";$("print").disabled=!on||busy||!out;}
+function say(t,err){const s=$("status");s.textContent=t;s.className="status"+(err?" err":"");}
+const short=u=>{u=u.toLowerCase();return u.length<=8?u.slice(-4):u.slice(4,8)};
 
-let dev,server,tx,rx,bulk;
-
-// CRC8 (poly 0x07) used by the "cat printer" family
-const CRC=(()=>{const t=new Uint8Array(256);for(let i=0;i<256;i++){let c=i;for(let j=0;j<8;j++)c=c&0x80?((c<<1)^0x07)&0xff:(c<<1)&0xff;t[i]=c;}return t})();
-const crc8=d=>{let c=0;for(const b of d)c=CRC[(c^b)&0xff];return c};
-function pkt(cmd,data){data=Uint8Array.from(data);return Uint8Array.from([0x51,0x78,cmd,0x00,data.length&0xff,data.length>>8,...data,crc8(data),0xff]);}
-async function send(p){ if(tx.properties.writeWithoutResponse) await tx.writeValueWithoutResponse(p); else await tx.writeValue(p); await sleep(15);}
-
-$("connect").onclick=async()=>{
-  if(!navigator.bluetooth){log("Web Bluetooth absent : ouvre cette page dans Bluefy.","err");return;}
+async function connect(){
+  if(!navigator.bluetooth){say("Bluetooth indisponible dans ce navigateur : ouvre la page dans Bluefy.",true);return;}
   try{
-    dev=await navigator.bluetooth.requestDevice(window.__all?{acceptAllDevices:true,optionalServices:SERVICES}:{filters:[{namePrefix:"X6"},{services:[U(0xae30)]},{services:[U(0xaf30)]}],optionalServices:SERVICES});
-    log("Appareil : "+(dev.name||"(sans nom)")+"  id "+dev.id,"ok");
-    server=await dev.gatt.connect();log("Connecté.","ok");
-    const svcs=await server.getPrimaryServices();
-    for(const s of svcs){
-      log("Service "+s.uuid);
-      for(const c of await s.getCharacteristics()){
-        const p=Object.entries(c.properties).filter(([k,v])=>v===true).map(([k])=>k).join(",");
-        log("   ↳ "+c.uuid.slice(4,8)+"  ["+p+"]");
-        const short=c.uuid.slice(4,8);
-        if(short==="ae01")tx=c; if(short==="ae02")rx=c; if(short==="ae03")bulk=c;
-      }
-    }
-    if(!tx){for(const s of svcs)for(const c of await s.getCharacteristics()){if(!tx&&(c.properties.writeWithoutResponse||c.properties.write))tx=c;if(!rx&&c.properties.notify)rx=c;}}
-    log(tx?"Écriture via "+tx.uuid.slice(4,8):"Aucune caractéristique d'écriture trouvée.",tx?"ok":"err");
-    if(bulk)log("Caractéristique AE03 présente : protocole récent (type MXW01), qui gère souvent le gris 4 bits.","ok");
-    if(rx){await rx.startNotifications();rx.addEventListener("characteristicvaluechanged",e=>log("← "+hex(new Uint8Array(e.target.value.buffer))));log("Écoute des réponses activée.");}
-    $("info").disabled=!tx;$("print").disabled=!tx;
-  }catch(e){log("Erreur : "+e.message,"err");}
-};
+    if(!dev){dev=await navigator.bluetooth.requestDevice({filters:[{namePrefix:"X6"},{services:[U(0xae30)]}],optionalServices:[U(0xae30),U(0xae3a)]});
+      dev.addEventListener("gattserverdisconnected",()=>{tx=rx=null;setConn(false);if(busy)say("Connexion perdue pendant l'impression.",true);});}
+    say("Connexion…");
+    const server=await dev.gatt.connect();
+    const svc=await server.getPrimaryService(U(0xae30));
+    for(const c of await svc.getCharacteristics()){const s=short(c.uuid);if(s==="ae01")tx=c;if(s==="ae02")rx=c;}
+    if(!tx){for(const c of await svc.getCharacteristics()){if(!tx&&(c.properties.writeWithoutResponse||c.properties.write))tx=c;if(!rx&&c.properties.notify)rx=c;}}
+    if(rx){await rx.startNotifications();rx.addEventListener("characteristicvaluechanged",e=>{const d=new Uint8Array(e.target.value.buffer);
+      if(d[2]===0xae)paused=d[6]===0x10;});}
+    setConn(true,dev.name);say("");
+  }catch(e){if(e&&e.name==="NotFoundError"){say("Aucune imprimante choisie. Vérifie qu'elle est allumée et que l'appli officielle est fermée.",true);}
+    else say("Connexion impossible : "+(e&&e.message||e),true);setConn(false);}
+}
+$("connect").onclick=connect;
 
-$("info").onclick=async()=>{
-  try{
-    log("→ état (A3)");await send(pkt(0xa3,[0]));await sleep(400);
-    log("→ infos (A8)");await send(pkt(0xa8,[0]));await sleep(400);
-    log("→ batterie/variante (AB)");await send(pkt(0xab,[0]));await sleep(400);
-    log("Fin des requêtes. Une ligne « ← » par réponse reçue.");
-  }catch(e){log("Erreur : "+e.message,"err");}
-};
-
-// 1-bit test: left-anchored arrow + stepped bars, 384 dots wide, LSB-first bytes
 $("print").onclick=async()=>{
+  if(!out||busy)return;
+  if(!tx||!dev?.gatt?.connected){await connect();if(!tx)return;}
+  busy=true;$("print").disabled=true;
   try{
-    const W=384,H=96,rows=[];
-    for(let y=0;y<H;y++){
-      const r=new Uint8Array(W/8);
-      for(let x=0;x<W;x++){
-        let on=false;
-        if(y<40){ // arrow pointing left, at the left edge
-          const cy=20,d=Math.abs(y-cy);on=(x<60&&x>=d*1.4)||(x>=40&&x<120&&d<6);
-        } else if(y>=50){ // 6 bars of decreasing density
-          const band=Math.floor(x/64),dens=[1,.8,.6,.4,.2,.05][band];
-          on=((x*7+y*13)%100)/100<dens;
-        }
-        if(on)r[x>>3]|=1<<(x&7);
-      }
-      rows.push(r);
-    }
-    log("→ réglages (A4 qualité, AF énergie, BE mode image)");
+    const e=ENERGY[P.density-1];
     await send(pkt(0xa4,[0x33]));
-    await send(pkt(0xaf,[0xe0,0x2e]));
+    await send(pkt(0xaf,[e&255,e>>8]));
     await send(pkt(0xbe,[0x00]));
     await send(pkt(0xa6,[0xaa,0x55,0x17,0x38,0x44,0x5f,0x5f,0x5f,0x44,0x38,0x2c]));
-    log("→ "+H+" lignes (A2)");
-    for(const r of rows)await send(pkt(0xa2,r));
-    await send(pkt(0xa1,[0x30,0x00]));
+    const bpl=gw>>3;
+    for(let y=0;y<gh;y++){
+      const r=new Uint8Array(48);
+      for(let x=0;x<Math.min(gw,384);x++)if(out[y*gw+x]<128)r[x>>3]|=1<<(x&7);
+      await send(pkt(0xa2,r));
+      if(y%16===0)say(`Impression… ${Math.round(y/gh*100)} %`);
+    }
+    await send(pkt(0xa1,[0x50,0x00]));
     await send(pkt(0xa6,[0xaa,0x55,0x17,0,0,0,0,0,0,0,0x17]));
-    log("Envoi terminé. Regarde l'imprimante : flèche à GAUCHE pointant vers la gauche + 6 barres du plus foncé au plus clair.","ok");
-  }catch(e){log("Erreur : "+e.message,"err");}
+    say("Envoyé à l'imprimante.");
+  }catch(err){say("Impression interrompue : "+(err&&err.message||err),true);}
+  busy=false;$("print").disabled=!tx;
 };
 
-$("copy").onclick=async()=>{
-  try{await navigator.clipboard.writeText(logEl.textContent);log("Journal copié.","ok");}
-  catch(e){const r=document.createRange();r.selectNodeContents(logEl);getSelection().removeAllRanges();getSelection().addRange(r);log("Sélectionne et copie le texte manuellement.");}
-};
-$("all").onclick=()=>{window.__all=true;log("Liste complète activée : touche « Connecter » à nouveau.");};
-log("Prêt. Touche « Connecter » puis choisis l'imprimante (souvent nommée X6h ou similaire).");
+syncUI();loadMire();
+})();
 </script>
+
 </body>
 </html>
