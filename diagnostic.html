@@ -29,6 +29,7 @@ pre{background:var(--card);border:1px solid var(--line);border-radius:12px;paddi
     <button id="info" disabled>2 · Interroger</button>
     <button id="print" disabled>3 · Impression test</button>
     <button class="primary" id="heat" disabled>4 · Test de chauffe</button>
+    <button class="primary" id="gray" disabled>5 · Test gris</button>
     <button id="copy">Copier le journal</button>
     <button id="all">Imprimante absente de la liste ?</button>
   </div>
@@ -49,7 +50,9 @@ let dev,server,tx,rx,bulk;
 const CRC=(()=>{const t=new Uint8Array(256);for(let i=0;i<256;i++){let c=i;for(let j=0;j<8;j++)c=c&0x80?((c<<1)^0x07)&0xff:(c<<1)&0xff;t[i]=c;}return t})();
 const crc8=d=>{let c=0;for(const b of d)c=CRC[(c^b)&0xff];return c};
 function pkt(cmd,data){data=Uint8Array.from(data);return Uint8Array.from([0x51,0x78,cmd,0x00,data.length&0xff,data.length>>8,...data,crc8(data),0xff]);}
-async function send(p){ if(tx.properties.writeWithoutResponse) await tx.writeValueWithoutResponse(p); else await tx.writeValue(p); await sleep(15);}
+let paused=false;
+async function send(p){for(let o=0;o<p.length;o+=100){while(paused)await sleep(20);const part=p.subarray(o,o+100);
+  if(tx.properties.writeWithoutResponse)await tx.writeValueWithoutResponse(part);else await tx.writeValue(part);await sleep(10);}}
 
 $("connect").onclick=async()=>{
   if(!navigator.bluetooth){log("Web Bluetooth absent : ouvre cette page dans Bluefy.","err");return;}
@@ -70,8 +73,8 @@ $("connect").onclick=async()=>{
     if(!tx){for(const s of svcs)for(const c of await s.getCharacteristics()){if(!tx&&(c.properties.writeWithoutResponse||c.properties.write))tx=c;if(!rx&&c.properties.notify)rx=c;}}
     log(tx?"Écriture via "+tx.uuid.slice(4,8):"Aucune caractéristique d'écriture trouvée.",tx?"ok":"err");
     if(bulk)log("Caractéristique AE03 présente : protocole récent (type MXW01), qui gère souvent le gris 4 bits.","ok");
-    if(rx){await rx.startNotifications();rx.addEventListener("characteristicvaluechanged",e=>log("← "+hex(new Uint8Array(e.target.value.buffer))));log("Écoute des réponses activée.");}
-    $("info").disabled=!tx;$("print").disabled=!tx;$("heat").disabled=!tx;
+    if(rx){await rx.startNotifications();rx.addEventListener("characteristicvaluechanged",e=>{const d=new Uint8Array(e.target.value.buffer);if(d[2]===0xae){paused=d[6]===0x10;return;}log("← "+hex(d));});log("Écoute des réponses activée.");}
+    $("info").disabled=!tx;$("print").disabled=!tx;$("heat").disabled=!tx;$("gray").disabled=!tx;
   }catch(e){log("Erreur : "+e.message,"err");}
 };
 
@@ -147,6 +150,55 @@ $("heat").onclick=async()=>{
     }
     await send(pkt(0xa1,[0x40,0x00]));
     log("Fini. Compte les petits carrés à gauche de la bande la plus noire.","ok");
+  }catch(e){log("Erreur : "+e.message,"err");}
+};
+
+// ---- Gray test: several encodings, each preceded by a 1-bit marker (N squares) ----
+async function marker(n){
+  await send(pkt(0xa4,[0x35]));await send(pkt(0xaf,[0x20,0x4e]));await send(pkt(0xbe,[0x01]));await send(pkt(0xbd,[0x20]));
+  for(let y=0;y<14;y++){const r=new Uint8Array(48);if(y>=2&&y<12)for(let x=0;x<16*n;x++)if(x%16<10)r[x>>3]|=1<<(x&7);await send(pkt(0xa2,r));}
+}
+function grayLine(y){ // horizontal ramp white->black, 4bpp, low nibble = left pixel
+  const l=new Uint8Array(192);
+  for(let x=0;x<384;x++){const v=Math.min(15,Math.floor(x/24));l[x>>1]|=(x&1)?v<<4:v;}
+  return l;
+}
+const lzoLit=raw=>Uint8Array.from([17+raw.length,...raw,0x11,0,0]);
+async function zlib(raw){
+  if(typeof CompressionStream==="undefined")return null;
+  const cs=new CompressionStream("deflate");const w=cs.writable.getWriter();w.write(raw);w.close();
+  return new Uint8Array(await new Response(cs.readable).arrayBuffer());
+}
+$("gray").onclick=async()=>{
+  const z=await zlib(grayLine(0));
+  const V=[
+    ["BE 01 01, en-tête (brut, compressé), LZO",{be:[1,1],enc:"lzo",swap:false}],
+    ["BE 00 01 (type image), LZO",{be:[0,1],enc:"lzo",swap:false}],
+    ["BE 01 00 (Gray8), LZO",{be:[1,0],enc:"lzo",swap:false}],
+    ["en-tête inversé (compressé, brut), LZO",{be:[1,1],enc:"lzo",swap:true}],
+    ["zlib au lieu de LZO",{be:[1,1],enc:"zlib",swap:false}],
+    ["avec lattice autour, LZO",{be:[1,1],enc:"lzo",swap:false,lat:true}],
+  ];
+  try{
+    for(let i=0;i<V.length;i++){
+      const [label,o]=V[i];log("→ essai "+(i+1)+" : "+label);
+      if(o.enc==="zlib"&&!z){log("   zlib indisponible ici, essai sauté","err");continue;}
+      await marker(i+1);
+      await send(pkt(0xa4,[0x35]));await send(pkt(0xaf,[0x20,0x4e]));await send(pkt(0xbd,[0x20]));
+      if(o.lat)await send(pkt(0xa6,[0xaa,0x55,0x17,0x38,0x44,0x5f,0x5f,0x5f,0x44,0x38,0x2c]));
+      await send(pkt(0xbe,o.be));
+      for(let y=0;y<30;y++){
+        const raw=y===0?new Uint8Array(192):grayLine(y);
+        const c=o.enc==="zlib"?(y===0?await zlib(raw):z):lzoLit(raw);
+        const a=[raw.length&255,raw.length>>8],b=[c.length&255,c.length>>8];
+        await send(pkt(0xcf,[...(o.swap?b:a),...(o.swap?a:b),...c]));
+      }
+      if(o.lat)await send(pkt(0xa6,[0xaa,0x55,0x17,0,0,0,0,0,0,0,0x17]));
+      await send(pkt(0xa1,[0x10,0x00]));
+      await sleep(400);
+    }
+    await send(pkt(0xa1,[0x40,0x00]));
+    log("Fini. Pour chaque groupe de carrés, regarde s'il y a un dégradé juste en dessous.","ok");
   }catch(e){log("Erreur : "+e.message,"err");}
 };
 
