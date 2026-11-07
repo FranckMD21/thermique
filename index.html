@@ -328,11 +328,12 @@ const short=u=>{u=u.toLowerCase();return u.length<=8?u.slice(-4):u.slice(4,8)};
 async function connect(){
   if(!navigator.bluetooth){say("Bluetooth indisponible dans ce navigateur : ouvre la page dans Bluefy.",true);return;}
   try{
-    if(!dev){dev=await navigator.bluetooth.requestDevice({filters:[{namePrefix:"X6"},{services:[U(0xae30)]}],optionalServices:[U(0xae30),U(0xae3a)]});
+    if(!dev){say("Dans la liste, choisis X6h-97B0 (ou l'appareil qui apparaît quand l'imprimante s'allume).");
+      dev=await navigator.bluetooth.requestDevice({acceptAllDevices:true,optionalServices:[U(0xae30),U(0xae3a)]});
       dev.addEventListener("gattserverdisconnected",()=>{tx=rx=null;setConn(false);if(busy)say("Connexion perdue pendant l'impression.",true);});}
     say("Connexion…");
     const server=await dev.gatt.connect();
-    const svc=await server.getPrimaryService(U(0xae30));
+    let svc;try{svc=await server.getPrimaryService(U(0xae30));}catch(e){dev=null;throw new Error("cet appareil n'est pas l'imprimante. Touche à nouveau « Connecter » et choisis X6h-97B0.");}
     for(const c of await svc.getCharacteristics()){const s=short(c.uuid);if(s==="ae01")tx=c;if(s==="ae02")rx=c;}
     if(!tx){for(const c of await svc.getCharacteristics()){if(!tx&&(c.properties.writeWithoutResponse||c.properties.write))tx=c;if(!rx&&c.properties.notify)rx=c;}}
     if(rx){await rx.startNotifications();rx.addEventListener("characteristicvaluechanged",e=>{const d=new Uint8Array(e.target.value.buffer);
