@@ -29,6 +29,7 @@ pre{background:var(--card);border:1px solid var(--line);border-radius:12px;paddi
     <button id="info" disabled>2 · Interroger</button>
     <button id="print" disabled>3 · Impression test</button>
     <button id="copy">Copier le journal</button>
+    <button id="all">Imprimante absente de la liste ?</button>
   </div>
   <pre id="log"></pre>
 </div>
@@ -52,7 +53,7 @@ async function send(p){ if(tx.properties.writeWithoutResponse) await tx.writeVal
 $("connect").onclick=async()=>{
   if(!navigator.bluetooth){log("Web Bluetooth absent : ouvre cette page dans Bluefy.","err");return;}
   try{
-    dev=await navigator.bluetooth.requestDevice({acceptAllDevices:true,optionalServices:SERVICES});
+    dev=await navigator.bluetooth.requestDevice(window.__all?{acceptAllDevices:true,optionalServices:SERVICES}:{filters:[{namePrefix:"X6"},{services:[U(0xae30)]},{services:[U(0xaf30)]}],optionalServices:SERVICES});
     log("Appareil : "+(dev.name||"(sans nom)")+"  id "+dev.id,"ok");
     server=await dev.gatt.connect();log("Connecté.","ok");
     const svcs=await server.getPrimaryServices();
@@ -117,6 +118,7 @@ $("copy").onclick=async()=>{
   try{await navigator.clipboard.writeText(logEl.textContent);log("Journal copié.","ok");}
   catch(e){const r=document.createRange();r.selectNodeContents(logEl);getSelection().removeAllRanges();getSelection().addRange(r);log("Sélectionne et copie le texte manuellement.");}
 };
+$("all").onclick=()=>{window.__all=true;log("Liste complète activée : touche « Connecter » à nouveau.");};
 log("Prêt. Touche « Connecter » puis choisis l'imprimante (souvent nommée X6h ou similaire).");
 </script>
 </body>
